@@ -53,7 +53,7 @@ def get_decision(attr_pairs, decision_tree):
         if value not in curr.children:
             value = curr.children.keys()[len(curr.children.keys())-1]
         curr = curr.children[value]
-    return curr.label
+    return int(curr.label)
 
 
 def test_classifier(testing_file_path, decision_tree):
@@ -68,7 +68,7 @@ def test_classifier(testing_file_path, decision_tree):
     for line in lines:
         if len(line)<1:
             continue
-        label = line.split()[0]
+        label = int(line.split()[0])
         attr_pairs = line.split()[1:]
         decision = get_decision(attr_pairs, decision_tree)
         if label != decision:

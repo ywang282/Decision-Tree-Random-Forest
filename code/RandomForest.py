@@ -3,6 +3,7 @@
 import sys
 import pprint
 import copy
+import random
 #todo
 import sklearn
 #todo
@@ -35,7 +36,7 @@ def debug_print(node):
     return node_dict
 
 
-def get_decision(attr_pairs, decision_tree):
+def get_decision(attr_pairs, forest):
     '''
     run the classifier and get the decision for each tuple
 
@@ -46,17 +47,21 @@ def get_decision(attr_pairs, decision_tree):
         val = attr_pair.split(':')[1]
         attr_pair_dict[attr] = val
 
-    curr = decision_tree
-    while(curr.terminate==False):
-        split_attr = curr.attribute
-        value = attr_pair_dict[split_attr]
-        if value not in curr.children:
-            value = curr.children.keys()[len(curr.children.keys())-1]
-        curr = curr.children[value]
-    return curr.label
+
+    results = []
+    for tree in forest:
+        curr = tree
+        while(curr.terminate==False):
+            split_attr = curr.attribute
+            value = attr_pair_dict[split_attr]
+            if value not in curr.children:
+                value = curr.children.keys()[len(curr.children.keys())-1]
+            curr = curr.children[value]
+        results.append(int(curr.label))
+    return max(set(results), key=results.count)
 
 
-def test_classifier(testing_file_path, decision_tree):
+def test_classifier(testing_file_path, forest):
     '''
     wrapper function to run the classifier and get the decisions for all the tuples
 
@@ -68,9 +73,9 @@ def test_classifier(testing_file_path, decision_tree):
     for line in lines:
         if len(line)<1:
             continue
-        label = line.split()[0]
+        label = int(line.split()[0])
         attr_pairs = line.split()[1:]
-        decision = get_decision(attr_pairs, decision_tree)
+        decision = get_decision(attr_pairs, forest)
         if label != decision:
             count += 1
     print ('mine:', 100-float(count)*100/len(lines))
@@ -206,12 +211,16 @@ def build_reverse_index(lines):
     return data_dict
 
 
-def buildtree(data_dict, attribute_list, lines, Node):
+def buildtree(data_dict, attribute_list, num_selected_attributes, lines, Node):
     '''
     build the decision tree
 
     '''
     # check for terminate condition
+    if len(attribute_list) < num_selected_attributes:
+        inverse = [(value, key) for key, value in data_dict['labels'].items()]
+        return Node(terminate=True, label=max(inverse)[1])
+
     if len(attribute_list) == 0:
         inverse = [(value, key) for key, value in data_dict['labels'].items()]
         return Node(terminate=True, label=max(inverse)[1])
@@ -219,9 +228,13 @@ def buildtree(data_dict, attribute_list, lines, Node):
     if len(data_dict['labels'].keys()) == 1:
         return Node(terminate=True, label=data_dict['labels'].keys()[0])
 
-    attribute_list.sort()
-    gini_index = compute_gini_index(data_dict, attribute_list)
-    attribute = attribute_list[gini_index]
+    # todo if2) The current instance set is empty
+
+    # select a random subset of the attributes
+    random.shuffle(attribute_list)
+    attribute_subset = (copy.copy(attribute_list))[:num_selected_attributes]
+    gini_index = compute_gini_index(data_dict, attribute_subset)
+    attribute = attribute_subset[gini_index]
     node = Node(attribute=attribute)
 
     # create children for the node
@@ -242,13 +255,13 @@ def buildtree(data_dict, attribute_list, lines, Node):
                 if attr == attribute and value == val:
                     new_lines.append(line)
         new_data_dict = build_reverse_index(new_lines)
-        subtree = buildtree(new_data_dict, copy.copy(attribute_list), new_lines, Node)
+        subtree = buildtree(new_data_dict, copy.copy(attribute_list), num_selected_attributes, new_lines, Node)
         node.children.setdefault(val, None)
         node.children[val] = subtree
     return node
 
 
-def construct_decision_tree(lines):
+def construct_decision_tree(num_attribute_fraction, num_tuple, lines):
     '''
     wrapper function for constructing the decision tree
 
@@ -260,10 +273,28 @@ def construct_decision_tree(lines):
             self.label = label
             self.children = {}
 
-    data_dict = build_reverse_index(lines)
+    # random select a subset of lines
+    subset_lines = []
+    for i in range(num_tuple):
+        random_int = random.randint(0, num_tuple-1)
+        subset_lines.append(copy.copy(lines[random_int]))
+    data_dict = build_reverse_index(subset_lines)
     attribute_list = data_dict['attr_val_pairs'].keys()
-    root = buildtree(data_dict, attribute_list, lines, Node)
+    num_selected_attributes = int(len(attribute_list)*num_attribute_fraction)
+    root = buildtree(data_dict, attribute_list, num_selected_attributes, lines, Node)
     return root
+
+
+def construct_random_forest(num_trees, num_attribute_fraction, num_tuple, lines):
+    '''
+    wrapper function to construct the random forest
+
+    '''
+    forest = []
+    for i in range(num_trees):
+        tree = construct_decision_tree(num_attribute_fraction, num_tuple, lines)
+        forest.append(tree)
+    return forest
 
 
 def main():
@@ -272,12 +303,15 @@ def main():
     with open(training_file_path) as fin:
         lines = fin.read().splitlines()
 
-    # construct the decision tree
-    decision_tree = construct_decision_tree(lines)
+    # todo
+    num_trees = 20
+    num_attribute_fraction = 0.4
+    num_tuple = int(len(lines)/10)
+    forest = construct_random_forest(num_trees, num_attribute_fraction, num_tuple, lines)
 
     # open the training set file and store the data in memory
     testing_file_path = sys.argv[2]
-    test_classifier(testing_file_path, decision_tree)
+    test_classifier(testing_file_path, forest)
 
     # compare the result with the standard sklearn
     run_standard(training_file_path, testing_file_path)
