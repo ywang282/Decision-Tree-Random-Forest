@@ -4,6 +4,8 @@ import sys
 import pprint
 import numpy as np
 import copy
+import sklearn
+from sklearn import tree
 counter = 0
 
 def compute_gini_val(sub_dict):
@@ -68,26 +70,26 @@ def build_dict(lines):
 
 
 def buildtree(data_dict, attribute_list, lines, Node, counter=0):
-    print ('this is the counters time  -------- ', counter)
-    pprint.pprint(attribute_list)
-    pprint.pprint(data_dict)
+    #print ('this is the counters time  -------- ', counter)
+    #pprint.pprint(attribute_list)
+    #pprint.pprint(data_dict)
     counter += 1
 
     # check for terminate condition
     if len(attribute_list) == 0:
         inverse = [(value, key) for key, value in data_dict['labels'].items()]
-        print ('-------------in first-------------')
+        #print ('-------------in first-------------')
         return Node(terminate=True, label=max(inverse)[1])
 
     if len(data_dict['labels'].keys()) == 1:
-        print ('-------------in second-------------')
+        #print ('-------------in second-------------')
         return Node(terminate=True, label=data_dict['labels'].keys()[0])
 
 
     attribute_list.sort()
     gini_index = compute_gini_index(data_dict, attribute_list)
     attribute = attribute_list[gini_index]
-    print ('the attribute we are splitting on is ', attribute)
+    #print ('the attribute we are splitting on is ', attribute)
     node = Node(attribute=attribute)
 
 
@@ -107,7 +109,7 @@ def buildtree(data_dict, attribute_list, lines, Node, counter=0):
                 if attr == attribute and value == val:
                     new_lines.append(line)
         new_data_dict = build_dict(new_lines)
-        print('val: -- ', val)
+        #print('val: -- ', val)
         subtree = buildtree(new_data_dict, copy.copy(attribute_list), new_lines, Node, counter)
         node.children.setdefault(val, None)
         node.children[val] = subtree
@@ -144,8 +146,78 @@ def construct_decision_tree(lines):
     data_dict = build_dict(lines)
     attribute_list = data_dict['attr_val_pairs'].keys()
     root = buildtree(data_dict, attribute_list, lines, Node)
-    pprint.pprint(debug_print(root))
+    #pprint.pprint(debug_print(root))
     return root
+
+def get_decision(attr_pairs, decision_tree):
+    attr_pair_dict = {}
+    for attr_pair in attr_pairs:
+        attr = attr_pair.split(':')[0]
+        val = attr_pair.split(':')[1]
+        attr_pair_dict[attr] = val
+    curr = decision_tree
+    prev = decision_tree
+    while(curr.terminate==False):
+        split_attr = curr.attribute
+        value = attr_pair_dict[split_attr]
+        if value not in curr.children:
+            value = curr.children.keys()[len(curr.children.keys())-1]
+        curr = curr.children[value]
+    return curr.label
+
+
+def test_classifier(testing_file_path, decision_tree):
+    with open(testing_file_path) as fin:
+        lines = fin.read().splitlines()
+    count = 0 
+    for line in lines:
+        label = line.split()[0]
+        attr_pairs = line.split()[1:]
+        decision = get_decision(attr_pairs, decision_tree)
+        print((label, decision))
+        if label!=decision:
+            count += 1
+    print ('mine:', 100-float(count)*100/len(lines))
+
+
+def run_standard(training_file_path, testing_file_path):
+    count = 0 
+    with open(training_file_path) as fin:
+        train_lines = fin.read().splitlines()
+    x = []
+    y = []
+    for line in train_lines:
+        if len(line)<1:
+            continue
+        label = line.split()[0]
+        pairs = line.split()[1:]
+        sub_list = []
+        for pair in pairs:
+            sub_list.append(int(pair.split(':')[1]))
+        x.append(sub_list)
+        y.append(int(label))
+    clf = tree.DecisionTreeClassifier()
+    clf = clf.fit(x, y)
+
+    with open(testing_file_path) as fin:
+        test_lines = fin.read().splitlines()
+    x_x = []
+    for line in test_lines:
+        label = line.split()[0]
+        pairs = line.split()[1:]
+        sub_list = []
+        for pair in pairs:
+            sub_list.append(int(pair.split(':')[1]))
+        x_x.append(sub_list)
+
+    result = clf.predict(x_x)
+
+    for i in range(len(result)):
+        label = int(test_lines[i].split()[0])
+        decision = result[i]
+        if label!=decision:
+            count += 1
+    print ('standard:', 100-float(count)*100/len(test_lines))
 
 
 def main():
@@ -159,7 +231,9 @@ def main():
 
     # open the training set file and store the data in memory
     testing_file_path = sys.argv[2]
-    # TODO
+    test_classifier(testing_file_path, decision_tree)
+
+    run_standard(training_file_path, testing_file_path)
 
 if __name__ == "__main__":
     main()
