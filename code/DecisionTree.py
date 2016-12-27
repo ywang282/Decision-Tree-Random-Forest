@@ -1,38 +1,22 @@
 #!/usr/bin/python
 
 import sys
-import pprint
 import copy
-#todo
-import sklearn
-#todo
-from sklearn import tree
 
-def get_node_dict(node):
+
+def print_matrix(matrix):
     '''
-    DEBUG
+    print the matrix to stdout
 
     '''
-    node_dict = {'terminate':-1, 'label': -1, 'attribute':-1, 'children':{}}
-    node_dict['terminate'] = node.terminate
-    node_dict['label'] = node.label
-    node_dict['attribute'] = node.attribute
-    return node_dict
-
-def debug_print(node):
-    '''
-    DEBUG
-    
-    '''
-    # traverse the node:
-    if node is None:
-        return {}
-    node_dict = get_node_dict(node)
-    if len(node.children.keys()) != 0:
-        for key in node.children.keys():
-            node_dict['children'].setdefault(key, {})
-            node_dict['children'][key] = debug_print(node.children[key])
-    return node_dict
+    output = ''
+    for row in range(len(matrix)):
+        for col in range(len(matrix[row])):
+            if col == len(matrix[row]) - 1:
+                output += str(matrix[row][col]) + '\n'
+            else:
+                output += str(matrix[row][col]) + ' '
+    sys.stdout.write(output)
 
 
 def get_decision(attr_pairs, decision_tree):
@@ -56,7 +40,7 @@ def get_decision(attr_pairs, decision_tree):
     return int(curr.label)
 
 
-def test_classifier(testing_file_path, decision_tree):
+def test_classifier(testing_file_path, decision_tree, matrix):
     '''
     wrapper function to run the classifier and get the decisions for all the tuples
 
@@ -64,68 +48,42 @@ def test_classifier(testing_file_path, decision_tree):
     with open(testing_file_path) as fin:
         lines = fin.read().splitlines()
 
-    count = 0 
+    decisions = []
+    labels = []
     for line in lines:
         if len(line)<1:
             continue
         label = int(line.split()[0])
+        labels.append(label)
         attr_pairs = line.split()[1:]
         decision = get_decision(attr_pairs, decision_tree)
-        if label != decision:
-            count += 1
-    print ('mine:', 100-float(count)*100/len(lines))
+        decisions.append(decision)
+
+    for i in range(len(labels)):
+        label = labels[i]
+        decision = decisions[i]
+        matrix[label-1][decision-1] += 1
+    print_matrix(matrix)
 
 
-def run_standard(training_file_path, testing_file_path):
+def get_empty_matrix(lines):
     '''
-    run the sklearn module on training set and testing set
+    return and empty matrix of the correct shape
 
     '''
-    count = 0 
-    # read the training set
-    with open(training_file_path) as fin:
-        train_lines = fin.read().splitlines()
-
-    x = []
-    y = []
-
-    for line in train_lines:
+    labels = []
+    for line in lines:
         if len(line)<1:
             continue
-        label = line.split()[0]
-        pairs = line.split()[1:]
-        sub_list = []
-        for pair in pairs:
-            sub_list.append(int(pair.split(':')[1]))
-        x.append(sub_list)
-        y.append(int(label))
-    clf = tree.DecisionTreeClassifier()
-    clf = clf.fit(x, y)
+        label = int(line.split()[0])
+        labels.append(label)
 
-    # read the testing set
-    with open(testing_file_path) as fin:
-        test_lines = fin.read().splitlines()
-
-    x_x = []
-
-    for line in test_lines:
-        if len(line)<1:
-            continue
-        label = line.split()[0]
-        pairs = line.split()[1:]
-        sub_list = []
-        for pair in pairs:
-            sub_list.append(int(pair.split(':')[1]))
-        x_x.append(sub_list)
-
-    result = clf.predict(x_x)
-
-    for i in range(len(result)):
-        label = int(test_lines[i].split()[0])
-        decision = result[i]
-        if label != decision:
-            count += 1
-    print ('standard:', 100-float(count)*100/len(test_lines))
+    num_lables = len(list(set(labels)))
+    matrix = []
+    row = [0]*num_lables
+    for i in range(num_lables):
+        matrix.append(copy.copy(row))
+    return matrix
 
 
 def compute_gini_val(sub_dict):
@@ -275,12 +233,12 @@ def main():
     # construct the decision tree
     decision_tree = construct_decision_tree(lines)
 
+    # compute matrix
+    matrix = get_empty_matrix(lines)
+
     # open the training set file and store the data in memory
     testing_file_path = sys.argv[2]
-    test_classifier(testing_file_path, decision_tree)
-
-    # compare the result with the standard sklearn
-    run_standard(training_file_path, testing_file_path)
+    test_classifier(testing_file_path, decision_tree, matrix)
 
 
 if __name__ == "__main__":
